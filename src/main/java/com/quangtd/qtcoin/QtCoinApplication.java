@@ -1,13 +1,10 @@
 package com.quangtd.qtcoin;
 
 import com.quangtd.qtcoin.p2p.P2PServer;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.util.SocketUtils;
 
-import javax.annotation.PostConstruct;
 import java.io.IOException;
 
 @SpringBootApplication

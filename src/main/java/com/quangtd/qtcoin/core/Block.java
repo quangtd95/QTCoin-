@@ -12,7 +12,7 @@ public class Block {
     private String hash;
     private String previousHash;
     private long timestamp;
-    private String data;
+    private List<Transaction> data;
     private int difficulty;
     private long nonce;
 }

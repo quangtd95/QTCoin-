@@ -116,7 +116,7 @@ public class P2PServer {
             System.out.println("blockchain possibly behind. We got: "
                     + lastBlockHolding.getIndex() + " Peer got: " + lastBlockReceived.getIndex());
             if (lastBlockReceived.getPreviousHash().equals(lastBlockHolding.getHash())) {
-                BlockChain.addBlock(lastBlockReceived);
+                BlockChain.addBlockToChain(lastBlockReceived);
             } else if (receivedBlockchain.size() == 1) {
                 System.out.println("We have to query the chain from our peer");
                 broadcast(queryAll());

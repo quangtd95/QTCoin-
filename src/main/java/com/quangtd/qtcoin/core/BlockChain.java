@@ -4,17 +4,36 @@ import com.google.gson.Gson;
 import com.quangtd.qtcoin.p2p.P2PServer;
 import lombok.Getter;
 import org.apache.commons.codec.digest.DigestUtils;
-import org.apache.commons.lang3.StringUtils;
 
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class BlockChain {
     @Getter
     private static List<Block> blockchain = new ArrayList<Block>() {{
         add(getGenesisBlock());
     }};
+
+    @Getter
+    private static List<UnspentTxOut> unspentTxOuts = Transaction.processTransactions(blockchain.get(0).getData(), new ArrayList<>(), 0);
+
+    private static List<UnspentTxOut> getUnspentTxOuts = cloneList(unspentTxOuts);
+
+    public static List<UnspentTxOut> cloneList(List<UnspentTxOut> list) {
+
+        try {
+            List<UnspentTxOut> clone = new ArrayList<>(list.size());
+            for (UnspentTxOut item : list) {
+                clone.add((UnspentTxOut) item.clone());
+            }
+            return clone;
+        } catch (CloneNotSupportedException e) {
+            e.printStackTrace();
+        }
+        return new ArrayList<>();
+
+    }
 
     // in seconds
     private final static int BLOCK_GENERATION_INTERVAL = 10 * 1000;
@@ -23,8 +42,21 @@ public class BlockChain {
     private final static int DIFFICULTY_ADJUSTMENT_INTERVAL = 10;
 
     private static Block getGenesisBlock() {
+        List<Transaction> transactions = new ArrayList<Transaction>() {{
+            add(getGenesisTransaction());
+        }};
         return new Block(0, "91a73664bc84c0baa1fc75ea6e4aa6d1d20c5df664c724e3159aefc2e1186627", "",
-                1533469362328L, "genesisBlock", 4, 0);
+                1533469362328L, transactions, 4, 0);
+    }
+
+    private static Transaction getGenesisTransaction() {
+        List<TxIn> txIns = new ArrayList<>();
+        txIns.add(new TxIn("", 0, ""));
+        List<TxOut> txOuts = new ArrayList<>();
+        txOuts.add(new TxOut("04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a",
+                50));
+        String id = "e655f6a5f26dc9b4cac6e46f52336428287759cf81ef5ff10854f69d68f43fa3";
+        return new Transaction(id, txIns, txOuts);
     }
 
     public BlockChain() {
@@ -58,66 +90,117 @@ public class BlockChain {
         return blockchain.get(blockchain.size() - 1);
     }
 
-    public static Block generateNextBlock(String data) {
+    public static Block generateRawNextBlock(List<Transaction> transactions) {
         Block lastBlock = getLastBlock();
+        int difficulty = getDifficulty(getBlockchain());
         int nextIndex = lastBlock.getIndex() + 1;
         long nextTimestamp = System.currentTimeMillis();
-        int difficulty = getDifficulty(getBlockchain());
-        Block newBlock = findBlock(nextIndex,lastBlock.getHash(),nextTimestamp,data,difficulty);
-        addBlock(newBlock);
-        P2PServer.broadcast(P2PServer.responseLastBlock());
-        return newBlock;
+        Block block = findBlock(nextIndex, lastBlock.getHash(), nextTimestamp, transactions, difficulty);
+        if (addBlockToChain(block)) {
+            P2PServer.broadcast(P2PServer.responseLastBlock());
+            return block;
+        } else {
+            return null;
+        }
     }
 
-    public static Block findBlock(int index, String previousHash,long timestamp,String data,
-                                  int difficulty){
+    public static Block generateNextBlock(String address) {
+        Transaction coinbaseTx = Transaction.getCoinbaseTransaction(address, getLastBlock().getIndex() + 1);
+        List<Transaction> blockData = new ArrayList<Transaction>() {{
+            add(coinbaseTx);
+        }};
+        blockData.addAll(TransactionPool.getTransactionPool());
+        return generateRawNextBlock(blockData);
+    }
+
+    public static Block generateBlockWithTransaction(String privateKey, String receiveAddress, long amout) {
+        Transaction coinbaseTx = Transaction.getCoinbaseTransaction(receiveAddress, getLastBlock().getIndex() + 1);
+        Transaction tx = Wallet.createTransaction(receiveAddress, amout, privateKey, unspentTxOuts, TransactionPool.getTransactionPool());
+        List<Transaction> blockData = new ArrayList<Transaction>() {{
+            add(coinbaseTx);
+            add(tx);
+        }};
+        return generateRawNextBlock(blockData);
+    }
+
+    public static List<UnspentTxOut> findUnspentTxOuts(String ownerAddress, List<UnspentTxOut> unspentTxOuts) {
+        return unspentTxOuts.stream().filter(u -> u.getAddress().equals(ownerAddress)).collect(Collectors.toList());
+    }
+
+    public static Block findBlock(int index, String previousHash, long timestamp, List<Transaction> data,
+                                  int difficulty) {
         long nonce = 0;
-        while (true){
-            String hash = calculateHash(index,previousHash,timestamp,data,difficulty,nonce);
-            if (hashMatchesDifficulty(hash,difficulty)){
-                return new Block(index,hash,previousHash,timestamp,data,difficulty,nonce);
+        while (true) {
+            String hash = calculateHash(index, previousHash, timestamp, data, difficulty, nonce);
+            if (hashMatchesDifficulty(hash, difficulty)) {
+                return new Block(index, hash, previousHash, timestamp, data, difficulty, nonce);
             }
             nonce++;
-            if (nonce >= Long.MAX_VALUE){
+            if (nonce >= Long.MAX_VALUE) {
                 nonce = 0;
             }
         }
     }
 
     private static boolean hashMatchesDifficulty(String hash, int difficulty) {
-        String hashInBinary = hexToBinary(hash);
+        String hashInBinary = Utils.convertHexToBinary(hash);
         return hashInBinary.matches("[0]{" + difficulty + "}.*$");
     }
 
-    public static boolean addBlock(Block newBlock) {
+    public static boolean addBlockToChain(Block newBlock) {
         if (isValidNewBlock(newBlock, getLastBlock())) {
-            blockchain.add(newBlock);
-            return true;
+            List<UnspentTxOut> retVal = Transaction.processTransactions(newBlock.getData(), getUnspentTxOuts(), newBlock.getIndex());
+            if (retVal == null) {
+                System.out.println("Block is not valid in terms of transactions");
+                return false;
+            } else {
+                blockchain.add(newBlock);
+                setUnspentTxOuts(retVal);
+                TransactionPool.updateTransactionPool(unspentTxOuts);
+                return true;
+            }
+
         }
         return false;
     }
 
+    public static void setUnspentTxOuts(List<UnspentTxOut> aUnspentTxOuts) {
+        System.out.println("replacing unspentTxOut with " + aUnspentTxOuts);
+        unspentTxOuts = aUnspentTxOuts;
+    }
+
     public static void replaceChain(List<Block> newBlockchain) {
-        if (isValidChain(newBlockchain) && getAccumulatedDifficulty(newBlockchain) > getAccumulatedDifficulty(getBlockchain())) {
+        List<UnspentTxOut> unspentTxOuts = isValidChain(newBlockchain);
+        if (unspentTxOuts != null && getAccumulatedDifficulty(newBlockchain) > getAccumulatedDifficulty(getBlockchain())) {
             System.out.println("Received blockchain is valid. Replacing current blockchain with received blockchain");
             blockchain.clear();
             blockchain.addAll(newBlockchain);
+            setUnspentTxOuts(unspentTxOuts);
+            TransactionPool.updateTransactionPool(unspentTxOuts);
             P2PServer.broadcast(P2PServer.responseLastBlock());
         } else {
             System.out.println("Received blockchain invalid");
         }
     }
 
-    public static boolean isValidChain(List<Block> blockchain) {
+    public static List<UnspentTxOut> isValidChain(List<Block> blockchain) {
         if (!isValidGenesis(blockchain.get(0))) {
-            return false;
+            return null;
         }
+        List<UnspentTxOut> unspentTxOuts = new ArrayList<>();
         for (int i = 1; i < blockchain.size(); i++) {
-            if (!isValidNewBlock(blockchain.get(i), blockchain.get(i - 1))) {
-                return false;
+            Block currentBlock = blockchain.get(i);
+            if (!isValidNewBlock(currentBlock, blockchain.get(i - 1))) {
+                return null;
+            }
+            unspentTxOuts = Transaction.processTransactions(currentBlock.getData(), unspentTxOuts, currentBlock.getIndex());
+            if (unspentTxOuts == null) {
+                System.out.println("unvalid transaction in blockchain");
+                return null;
             }
         }
-        return true;
+
+        return unspentTxOuts;
     }
 
     private static boolean isValidGenesis(Block block) {
@@ -138,40 +221,30 @@ public class BlockChain {
             System.out.println("invalid hash");
             return false;
         }
-        if(!hashMatchesDifficulty(newBlock.getHash(),newBlock.getDifficulty())){
+        if (!hashMatchesDifficulty(newBlock.getHash(), newBlock.getDifficulty())) {
             System.out.println("block difficulty not satisfied.");
             return false;
         }
         return true;
     }
 
-    private static String calculateHash(int index, String prevHash, long timestamp, String data, int difficulty, long nonce) {
+    private static String calculateHash(int index, String prevHash, long timestamp, List<Transaction> data, int difficulty, long nonce) {
         return DigestUtils.sha256Hex(index + prevHash + timestamp + new Gson().toJson(data) + difficulty + nonce);
     }
 
     private static String calculateHash(Block block) {
-        return calculateHash(block.getIndex(), block.getPreviousHash(), block.getTimestamp(), block.getData(),block.getDifficulty(),block.getNonce());
+        return calculateHash(block.getIndex(), block.getPreviousHash(), block.getTimestamp(), block.getData(), block.getDifficulty(), block.getNonce());
     }
 
-    private static String hexToBinary(String hash) {
-        if (StringUtils.isEmpty(hash)) return StringUtils.EMPTY;
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < hash.length(); i++) {
-            StringBuilder binary = new StringBuilder(new BigInteger(hash.charAt(i) + "", 16).toString(2));
-            int length = binary.length();
-            for (int j = 1; j <= 4 - length; j++) {
-                binary.insert(0, "0");
-            }
-            result.append(binary);
-        }
-        return result.toString();
-    }
-
-    private static int getAccumulatedDifficulty(List<Block> blockchain){
+    private static int getAccumulatedDifficulty(List<Block> blockchain) {
         return blockchain.stream()
                 .map(Block::getDifficulty)
                 .map(difficulty -> (int) (Math.pow(2, difficulty)))
                 .reduce(0, (a, b) -> a + b);
+    }
+
+    public static void handleReceivedTransaction(Transaction transaction) {
+        TransactionPool.addToTransactionPool(transaction, getUnspentTxOuts());
     }
 
 }

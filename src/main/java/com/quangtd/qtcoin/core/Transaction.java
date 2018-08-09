@@ -1,29 +1,25 @@
 package com.quangtd.qtcoin.core;
 
 import com.google.gson.Gson;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.apache.commons.codec.digest.DigestUtils;
-import org.bouncycastle.jcajce.provider.asymmetric.util.EC5Util;
-import org.bouncycastle.jce.ECNamedCurveTable;
-import org.bouncycastle.jce.ECPointUtil;
-import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
-import org.bouncycastle.math.ec.ECCurve;
-import org.web3j.crypto.ECKeyPair;
 import org.web3j.crypto.Sign;
 
 import java.math.BigInteger;
-import java.security.*;
-import java.security.interfaces.ECPublicKey;
-import java.security.spec.InvalidKeySpecException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-public class Transaction {
+@NoArgsConstructor
+@AllArgsConstructor
+public class Transaction implements Cloneable<Transaction> {
     private static final long COINBASE_AMOUNT = 50L;
     @Getter
+    @Setter
     private String id;
     @Getter
     @Setter
@@ -32,7 +28,15 @@ public class Transaction {
     @Setter
     private List<TxOut> txOuts;
 
-    private static String getTransactionId(Transaction transaction) {
+    public Transaction clone() {
+        Transaction transaction = new Transaction();
+        transaction.setId(id);
+        transaction.setTxIns(Utils.cloneList(txIns));
+        transaction.setTxOuts(Utils.cloneList(txOuts));
+        return transaction;
+    }
+
+    public static String getTransactionId(Transaction transaction) {
         String txInContent = transaction.getTxIns()
                 .stream()
                 .map(txIn -> txIn.getTxOutId() + txIn.getTxOutIndex())
@@ -55,27 +59,12 @@ public class Transaction {
         }
         UnspentTxOut referencedUTxOut = refTxOutOptional.get();
         String address = referencedUTxOut.getAddress();
-        try {
-            ECPublicKey ecPublicKey = decodeKey(address.getBytes());
-            Signature ecdsaVerify = Signature.getInstance("ECDSA", "BC");
-            ecdsaVerify.initVerify(ecPublicKey);
-            ecdsaVerify.update(transaction.getId().getBytes());
-            return ecdsaVerify.verify(txIn.getSignature().getBytes());
-        } catch (InvalidKeySpecException | NoSuchAlgorithmException | NoSuchProviderException | InvalidKeyException | SignatureException e) {
-            e.printStackTrace();
+        boolean validAddress = Utils.verifySignedData(address, transaction.getId(), txIn.getSignature());
+        if (!validAddress) {
+            System.out.println("invalid txIn signature");
+            return false;
         }
-        return false;
-    }
-
-    public static ECPublicKey decodeKey(byte[] encoded) throws InvalidKeySpecException, NoSuchAlgorithmException, NoSuchProviderException {
-        ECNamedCurveParameterSpec params = ECNamedCurveTable.getParameterSpec("secp256k1");
-        KeyFactory fact = KeyFactory.getInstance("ECDSA", "BC");
-        ECCurve curve = params.getCurve();
-        java.security.spec.EllipticCurve ellipticCurve = EC5Util.convertCurve(curve, params.getSeed());
-        java.security.spec.ECPoint point = ECPointUtil.decodePoint(ellipticCurve, encoded);
-        java.security.spec.ECParameterSpec params2 = EC5Util.convertSpec(ellipticCurve, params);
-        java.security.spec.ECPublicKeySpec keySpec = new java.security.spec.ECPublicKeySpec(point, params2);
-        return (ECPublicKey) fact.generatePublic(keySpec);
+        return true;
     }
 
     private static boolean hasValidTxIns(Transaction transaction, List<UnspentTxOut> unspentTxOuts) {
@@ -85,7 +74,7 @@ public class Transaction {
                 .reduce(true, (a, b) -> a & b);
     }
 
-    private static boolean validateTransaction(Transaction transaction, List<UnspentTxOut> unspentTxOuts) {
+    public static boolean validateTransaction(Transaction transaction, List<UnspentTxOut> unspentTxOuts) {
         if (!getTransactionId(transaction).equals(transaction.getId())) {
             System.out.println("invalid tx id: " + transaction.getId());
             return false;
@@ -156,7 +145,7 @@ public class Transaction {
         return unspentTxOutOptional.orElse(null);
     }
 
-    private static Transaction getCoinbaseTransaction(String address, int blockIndex) {
+    public static Transaction getCoinbaseTransaction(String address, int blockIndex) {
         Transaction transaction = new Transaction();
         TxIn txIn = new TxIn();
         txIn.setSignature("");
@@ -172,33 +161,58 @@ public class Transaction {
         return transaction;
     }
 
-    private static String signTxIn(Transaction transaction, int txInNumber, String privateKey,
-                                   List<UnspentTxOut> unspentTxOuts) {
+    public static String signTxIn(Transaction transaction, int txInNumber, String privateKey,
+                                  List<UnspentTxOut> unspentTxOuts) {
         TxIn txIn = transaction.getTxIns().get(txInNumber);
         String dataToSign = transaction.getId();
         UnspentTxOut refUnspentOut = findUnspentTxOut(txIn.getTxOutId(), txIn.getTxOutIndex(), unspentTxOuts);
         if (refUnspentOut == null) {
+            System.out.println("could not find referenced txOut");
             throw new RuntimeException();
         }
         String referencedAddress = refUnspentOut.getAddress();
-        BigInteger privKey = new BigInteger(privateKey, 16);
-        BigInteger publicKey = Sign.publicKeyFromPrivate(privKey);
-        if (!publicKey.toString(16).equals(referencedAddress)) {
+        String address = Utils.getPublicKeyFromPrivateKey(privateKey);
+        if (!referencedAddress.equals(address)) {
+            System.out.println("trying to sign an input with private +\n" +
+                    " key that does not match the address that is referenced in txIn");
             throw new RuntimeException();
         }
-        ECKeyPair keyPair = new ECKeyPair(privKey, publicKey);
-        return bytesToHex(keyPair.sign(dataToSign.getBytes()).toString().getBytes());
+        return Utils.signData(privateKey, dataToSign);
     }
 
-    private final static char[] hexArray = "0123456789ABCDEF".toCharArray();
+    public static String getPublickeyFromPrivateKey(String privateKey) {
+        BigInteger privKey = new BigInteger(Utils.convertStringToHex(privateKey), 16);
+        BigInteger publicKey = Sign.publicKeyFromPrivate(privKey);
+        return publicKey.toString(16);
+    }
 
-    public static String bytesToHex(byte[] bytes) {
-        char[] hexChars = new char[bytes.length * 2];
-        for (int j = 0; j < bytes.length; j++) {
-            int v = bytes[j] & 0xFF;
-            hexChars[j * 2] = hexArray[v >>> 4];
-            hexChars[j * 2 + 1] = hexArray[v & 0x0F];
+    public static List<UnspentTxOut> updateUnspentTxOuts(List<Transaction> newTransactions, List<UnspentTxOut> unspentTxOuts) {
+        List<UnspentTxOut> newUnspentTxOuts = new ArrayList<>();
+        List<UnspentTxOut> consumedTxOuts = new ArrayList<>();
+        for (Transaction transaction : newTransactions) {
+            List<TxOut> txOuts = transaction.getTxOuts();
+            for (int i = 0; i < txOuts.size(); i++) {
+                newUnspentTxOuts.add(new UnspentTxOut(transaction.getId(), i, txOuts.get(i).getAddress(), txOuts.get(i).getAmount()));
+            }
+            List<TxIn> txIns = transaction.getTxIns();
+            for (TxIn txIn : txIns) {
+                consumedTxOuts.add(new UnspentTxOut(txIn.getTxOutId(), txIn.getTxOutIndex(), txIn.getSignature(), 0));
+            }
         }
-        return new String(hexChars);
+        List<UnspentTxOut> result = unspentTxOuts.stream()
+                .filter(unspentTxOut ->
+                        findUnspentTxOut(unspentTxOut.getTxOutId(), unspentTxOut.getTxOutIndex(), consumedTxOuts) == null)
+                .collect(Collectors.toList());
+        result.addAll(newUnspentTxOuts);
+        return result;
     }
+
+    public static List<UnspentTxOut> processTransactions(List<Transaction> transactions, List<UnspentTxOut> unspentTxOuts, int blockIndex) {
+        if (!validateBlockTransactions(transactions, unspentTxOuts, blockIndex)) {
+            System.out.println("invalid block transactions");
+            return null;
+        }
+        return updateUnspentTxOuts(transactions, unspentTxOuts);
+    }
+
 }

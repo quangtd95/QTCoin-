@@ -5,9 +5,14 @@ import lombok.Data;
 
 @Data
 @AllArgsConstructor
-public class UnspentTxOut {
+class UnspentTxOut implements Cloneable {
     private final String txOutId;
     private final int txOutIndex;
     private final String address;
     private final long amount;
+
+    @Override
+    protected Object clone() throws CloneNotSupportedException {
+        return new UnspentTxOut(txOutId, txOutIndex, address, amount);
+    }
 }
