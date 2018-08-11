@@ -1,6 +1,8 @@
-package com.quangtd.qtcoin.core;
+package com.quangtd.qtcoin.utils;
 
 import com.google.gson.Gson;
+import com.quangtd.qtcoin.domain.Cloneable;
+import com.quangtd.qtcoin.domain.Signature;
 import org.apache.commons.lang3.StringUtils;
 import org.web3j.crypto.ECKeyPair;
 import org.web3j.crypto.Keys;
@@ -12,7 +14,6 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.SignatureException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 public class Utils {
@@ -85,7 +86,7 @@ public class Utils {
         return pubKey.toString(16);
     }
 
-    public static ECKeyPair getKeyPairFromPrivateKey(String privateKey) {
+    private static ECKeyPair getKeyPairFromPrivateKey(String privateKey) {
         BigInteger privKey = new BigInteger(privateKey, 16);
         BigInteger pubKey = Sign.publicKeyFromPrivate(privKey);
         return new ECKeyPair(privKey, pubKey);
@@ -113,10 +114,11 @@ public class Utils {
 
     }
 
+
     public static <T> List<T> cloneList(List<? extends Cloneable<T>> list) {
         if (list == null) return null;
         List<T> result = new ArrayList<>();
-        list.forEach(it -> result.add(it.clone()));
+        list.forEach(it -> result.add(it.cloneObject()));
         return result;
     }
 

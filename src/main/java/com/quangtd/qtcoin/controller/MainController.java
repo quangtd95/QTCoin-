@@ -1,11 +1,10 @@
 package com.quangtd.qtcoin.controller;
 
-import com.google.gson.Gson;
-import com.quangtd.qtcoin.core.Block;
-import com.quangtd.qtcoin.core.BlockChain;
-import com.quangtd.qtcoin.p2p.P2PServer;
-import com.quangtd.qtcoin.p2p.P2PSocket;
-import org.springframework.http.HttpStatus;
+import com.quangtd.qtcoin.service.*;
+import com.quangtd.qtcoin.domain.Block;
+import com.quangtd.qtcoin.domain.Wallet;
+import com.quangtd.qtcoin.domain.Response;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -13,40 +12,73 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @RestController
 public class MainController {
 
+    @Autowired
+    private MainService mainService;
+
     @GetMapping("/blocks")
     @ResponseBody
-    public ResponseEntity<String> getBLocks(){
-        return new ResponseEntity<>(new Gson().toJson(BlockChain.getBlockchain(), List.class), HttpStatus.OK);
+    public ResponseEntity getBLocks() {
+        return Response.createResponse(mainService.getBlockchain(), List.class);
     }
 
     @PostMapping("/mineBlock")
     @ResponseBody
-    public ResponseEntity<String> mineBLock(String data){
-        Block newBlock = BlockChain.generateNextBlock(data);
+    public ResponseEntity mineBLock(String address) {
+        Block newBlock = mainService.mineBlockWithAddress(address);
         System.out.println(newBlock.toString());
-        return new ResponseEntity<>(new Gson().toJson(newBlock,Block.class), HttpStatus.OK);
+        return Response.createResponse(newBlock, Block.class);
     }
 
     @GetMapping("/peers")
     @ResponseBody
-    public ResponseEntity<String> peers(){
-        List<String> result =  P2PServer.getSockets().stream().map(P2PSocket::getSocket).map(socket -> socket.getInetAddress().toString() + ":" +socket.getPort()+"").collect(Collectors.toList());
-        return new ResponseEntity<>(new Gson().toJson(result,List.class),HttpStatus.OK);
+    public ResponseEntity peers() {
+        List<String> result = mainService.getPeers();
+        return Response.createResponse(result, List.class);
     }
 
     @PostMapping("/join")
     @ResponseBody
-    public ResponseEntity<String> joinNetwork(String data){
-        boolean success = P2PServer.joinNetwork(data);
-        if (success){
-            return new ResponseEntity<>("ok",HttpStatus.OK);
+    public ResponseEntity joinNetwork(String data) {
+        boolean success = mainService.joinNetwork(data);
+        if (success) {
+            return Response.createResponse("ok");
         } else {
-            return new ResponseEntity<>("fail",HttpStatus.INTERNAL_SERVER_ERROR);
+            return Response.createResponse("fail");
         }
     }
+
+    @PostMapping("/balance")
+    @ResponseBody
+    public ResponseEntity getBalance(String address) {
+        long balance = mainService.getBalance(address);
+        return Response.createResponse(balance + "");
+    }
+
+    @GetMapping("/transactionPool")
+    @ResponseBody
+    public ResponseEntity getTransactionPool() {
+        return Response.createResponse(mainService.getTransactionPool(), List.class);
+    }
+
+    @GetMapping("/initWallet")
+    @ResponseBody
+    public ResponseEntity initWallet() {
+        return Response.createResponse(mainService.initWallet(), Wallet.class);
+    }
+
+    @GetMapping("/dumpWallets")
+    @ResponseBody
+    public ResponseEntity dumpWallet() {
+        return Response.createResponse(mainService.generateDumpWallet(), List.class);
+    }
+
+  /*  @PostMapping("/sendCoins")
+    @ResponseBody
+    public ResponseEntity sendCoins(String privateKey, String receiveAddress, long amount) {
+        return Response.createResponse(mainService.sendCoin(privateKey, receiveAddress, amount), boolean.class);
+    }*/
 }

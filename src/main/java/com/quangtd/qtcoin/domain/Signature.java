@@ -1,4 +1,4 @@
-package com.quangtd.qtcoin.core;
+package com.quangtd.qtcoin.domain;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

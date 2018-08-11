@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head"></head>
+<body>
+<nav th:replace="layout :: header"></nav>
+<div class="container main-content form">
+
+    <h1>Send coins</h1>
+    <div class="alert alert-warning" role="alert" th:if="${message}">
+        <label th:text="${message}"></label>
+    </div>
+    <div class="row">
+        <!--/*@thymesVar id="loginForm" type="com.quangtd.qtcoin.form.SendCoinForm"*/-->
+        <form action="/sendCoins" method="POST" th:object="${sendCoinForm}">
+            <div class="form-group">
+                <label>Your Private key</label>
+                <input required="required" type="password" class="form-control" th:field="*{privateKey}"/>
+            </div>
+            <div class="form-group">
+                <label>Received Address</label>
+                <input required="required" type="text" class="form-control" th:field="*{receiveAddress}"/>
+            </div>
+            <div class="form-group">
+                <label>Amount</label>
+                <input type="number" class="form-control" th:field="*{amount}"/>
+            </div>
+            <button type="submit" class="btn btn-primary">Send</button>
+        </form>
+    </div>
+</div><!-- /.container -->
+
+<footer th:replace="layout :: footer"></footer>
+</body>
+</html>

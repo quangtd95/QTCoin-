@@ -1,16 +1,16 @@
-package com.quangtd.qtcoin.core;
+package com.quangtd.qtcoin.domain;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
 @Data
 @AllArgsConstructor
-class TxOut implements Cloneable<TxOut> {
+public class TxOut implements Cloneable<TxOut> {
     private String address;
     private long amount;
 
     @Override
-    public TxOut clone() {
+    public TxOut cloneObject() {
         return new TxOut(address, amount);
     }
 }

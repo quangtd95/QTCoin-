@@ -1,6 +1,6 @@
 package com.quangtd.qtcoin;
 
-import com.quangtd.qtcoin.core.Utils;
+import com.quangtd.qtcoin.utils.Utils;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;

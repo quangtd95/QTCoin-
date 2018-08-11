@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head"></head>
+<body>
+<nav th:replace="layout :: header"></nav>
+
+<div class="container main-content list">
+    <div class="alert alert-warning" role="alert" th:if="${message}">
+        <label th:text="${message}"></label>
+    </div>
+    <div class="row">
+        <label>Your Address:</label>
+    </div>
+    <div class="row">
+        <label style="word-break: break-all" th:text="${my_address}"></label>
+    </div>
+    <div class="row">
+        <a th:href="@{/mineBlock}" class="btn btn-success pull-left">
+            <span class="glyphicon glyphicon-plus"></span> Mine coin
+        </a>
+        <form class="form-inline pull-right" action="/logout" method="POST">
+            <button type="submit" class="btn btn-primary">Logout</button>
+        </form>
+    </div>
+    <div class="row">
+        <table class="table table-bordered table-hover">
+            <thead>
+            <tr>
+                <th>No</th>
+                <th>Created Date</th>
+                <th>Address</th>
+                <th>Amount</th>
+                <th>Send coin</th>
+                <th>Delete</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="wallet,iter : ${wallets}">
+                <td th:text="${iter.index}"></td>
+                <td th:text="${wallet.createdDateTime}"></td>
+                <td th:text="${wallet.publicKey}" style="word-break: break-all;"></td>
+                <td th:text="${wallet.balance}"></td>
+                <td><a th:href="@{/sendCoins}"><span class="glyphicon glyphicon-euro"></span></a></td>
+                <td><a href="#"><span class="glyphicon glyphicon-trash"></span></a></td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+<!-- /.container -->
+
+<footer th:replace="layout :: footer"></footer>
+</body>
+</html>

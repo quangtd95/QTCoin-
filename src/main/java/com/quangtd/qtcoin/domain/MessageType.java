@@ -1,4 +1,4 @@
-package com.quangtd.qtcoin.p2p;
+package com.quangtd.qtcoin.domain;
 
 import java.util.Arrays;
 import java.util.Optional;
